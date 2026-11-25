@@ -1,23 +1,34 @@
 # Minha Agenda
 
-PWA pessoal com turnos de trabalho, tarefas e provas por matéria e atalhos para pastas do Google Drive. Funciona offline e pode ser instalado no celular.
+App pessoal da Madu (PWA instalável + site no computador) para estudos, trabalho, estágio, finanças e arquivos. O briefing completo está em `CLAUDE.md`.
 
-## Publicar no GitHub Pages
+## Rodar no computador
 
-1. No GitHub, abra o repositório e vá em **Settings → Pages**.
-2. Em **Build and deployment**, escolha **Deploy from a branch**.
-3. Selecione o branch onde estão estes arquivos (por exemplo `main`) e a pasta `/ (root)`. Salve.
-4. Em alguns minutos o endereço aparece no topo da página, no formato `https://<usuario>.github.io/<repositorio>/`.
+```bash
+npm install
+npm run dev      # abre em http://localhost:5173
+npm run build    # gera a versão final em dist/
+```
+
+## Colocar no ar (Vercel)
+
+1. Entre em https://vercel.com e faça login com a conta do GitHub.
+2. Clique em **Add New… → Project** e importe o repositório `sh4fyz/App`. Se ele não aparecer, clique em **Adjust GitHub App Permissions** e libere o repositório.
+3. A Vercel reconhece o Vite sozinha (as configurações estão em `vercel.json`). Clique em **Deploy**.
+4. Em 1 ou 2 minutos sai um endereço do tipo `https://app-xxxx.vercel.app`.
+
+A Vercel publica o branch padrão do repositório (normalmente o `main`) como versão oficial. Os outros branches viram versões de prévia com endereço próprio. A partir da etapa 3, cadastre `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` em **Settings → Environment Variables** (modelo em `.env.example`).
 
 ## Instalar no celular
 
-- **Android (Chrome):** abra o endereço, toque no menu ⋮ e em **Instalar app**.
-- **iPhone (Safari):** abra o endereço, toque em **Compartilhar** e em **Adicionar à Tela de Início**. As notificações só funcionam depois de instalar.
+- **Android (Chrome):** abra o endereço, toque no menu ⋮ e em **Instalar app** (ou **Adicionar à tela inicial**).
+- **iPhone (Safari):** abra o endereço, toque em **Compartilhar** e em **Adicionar à Tela de Início**.
 
-## Dados
+Depois do primeiro acesso, o app abre mesmo sem internet.
 
-Tudo fica salvo no próprio aparelho. Em **Configurações → Backup** dá para exportar um arquivo e importar em outro aparelho. A sincronização com uma pasta oculta do Google Drive está prevista para uma próxima etapa.
+## Onde mexer
 
-## Atualizar o app
-
-Ao mudar qualquer arquivo, aumente `VERSION` em `sw.js` para que os celulares baixem a versão nova.
+- `src/config/modulos.ts`: lista de módulos que alimenta a barra lateral, a barra inferior e a tela Mais.
+- `src/data/exemplo.ts`: dados de exemplo da etapa 2 (os horários de aula e estágio são provisórios).
+- `src/components/ui/`: componentes no padrão shadcn/ui. `src/components/comum/`: Checklist, ItemLembrete, SeloData e GavetaRapida.
+- Ícone do app: edite `public/icone.svg` e rode `npm run icons` (precisa do Playwright instalado).
