@@ -1,47 +1,182 @@
-/* Estado local da etapa 2: fica salvo no aparelho (localStorage) até o Supabase entrar na etapa 3. */
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { dadosIniciais, type Lembrete, type Nota, type Tarefa } from './exemplo'
-import { iso, hoje } from '@/lib/datas'
+/*
+ * Dados do app vindos do Supabase.
+ * - Ao entrar, mostra na hora a última cópia salva no aparelho e busca a versão nova no banco.
+ * - Sem internet dá para ver tudo, mas editar fica bloqueado (com aviso).
+ * - Ao voltar para o app ou quando a internet volta, busca de novo (assim celular e computador ficam iguais).
+ */
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/auth/AuthProvider'
+import { ORDEM, TABELAS, type NomeTabela, type Tabelas } from './tipos'
 
-const CHAVE = 'minha-agenda:etapa2'
-type Estado = ReturnType<typeof dadosIniciais>
+type Linhas = { [T in NomeTabela]: Tabelas[T][] }
+type Novo<T extends NomeTabela> = Partial<Omit<Tabelas[T], 'id'>>
 
-function carregar(): Estado {
-  try {
-    const bruto = localStorage.getItem(CHAVE)
-    if (bruto) return { ...dadosIniciais(), ...JSON.parse(bruto) }
-  } catch {
-    /* armazenamento indisponível */
-  }
-  return dadosIniciais()
+const vazio = (): Linhas => ({ events: [], tasks: [], reminders: [], notes: [], exams: [], subjects: [], links: [] })
+const chaveCache = (uid: string) => `minha-agenda:cache:${uid}`
+
+function ordenar<T extends NomeTabela>(tabela: T, linhas: Tabelas[T][]): Tabelas[T][] {
+  const { coluna, asc } = ORDEM[tabela]
+  return [...linhas].sort((a, b) => {
+    const va = String((a as Record<string, unknown>)[coluna] ?? '')
+    const vb = String((b as Record<string, unknown>)[coluna] ?? '')
+    return asc ? va.localeCompare(vb) : vb.localeCompare(va)
+  })
 }
 
-const novoId = () => Math.random().toString(36).slice(2, 10)
+function useOnline() {
+  const [online, setOnline] = useState(() => navigator.onLine)
+  useEffect(() => {
+    const sim = () => setOnline(true)
+    const nao = () => setOnline(false)
+    window.addEventListener('online', sim)
+    window.addEventListener('offline', nao)
+    return () => {
+      window.removeEventListener('online', sim)
+      window.removeEventListener('offline', nao)
+    }
+  }, [])
+  return online
+}
+
+const AVISO_OFFLINE = 'Sem internet. Dá pra ver tudo, mas editar só com conexão.'
+const AVISO_ERRO = 'Não deu para salvar. Confira a internet e tente de novo.'
 
 function useDadosInterno() {
-  const [estado, setEstado] = useState<Estado>(carregar)
+  const { sessao } = useAuth()
+  const uid = sessao?.user.id ?? null
+  const online = useOnline()
+  const [linhas, setLinhas] = useState<Linhas>(vazio)
+  const [carregando, setCarregando] = useState(true)
+  const linhasRef = useRef(linhas)
+  linhasRef.current = linhas
+
+  // cópia local para abrir rápido e funcionar offline
+  useEffect(() => {
+    if (!uid) return
+    try {
+      const bruto = localStorage.getItem(chaveCache(uid))
+      setLinhas(bruto ? { ...vazio(), ...JSON.parse(bruto) } : vazio())
+    } catch {
+      setLinhas(vazio())
+    }
+  }, [uid])
 
   useEffect(() => {
+    if (!uid) return
     try {
-      localStorage.setItem(CHAVE, JSON.stringify(estado))
+      localStorage.setItem(chaveCache(uid), JSON.stringify(linhas))
     } catch {
       /* cheio ou bloqueado */
     }
-  }, [estado])
+  }, [linhas, uid])
+
+  const buscar = useCallback(async () => {
+    if (!supabase || !uid || !navigator.onLine) {
+      setCarregando(false)
+      return
+    }
+    const respostas = await Promise.all(
+      TABELAS.map((t) => supabase!.from(t).select('*').order(ORDEM[t].coluna, { ascending: ORDEM[t].asc }))
+    )
+    if (respostas.some((r) => r.error)) {
+      setCarregando(false)
+      return
+    }
+    const novo = vazio() as Record<NomeTabela, unknown[]>
+    TABELAS.forEach((t, i) => (novo[t] = respostas[i].data ?? []))
+    setLinhas(novo as Linhas)
+    setCarregando(false)
+  }, [uid])
+
+  useEffect(() => {
+    if (!uid) return
+    setCarregando(true)
+    buscar()
+    const aoVoltar = () => document.visibilityState === 'visible' && buscar()
+    document.addEventListener('visibilitychange', aoVoltar)
+    window.addEventListener('online', buscar)
+    return () => {
+      document.removeEventListener('visibilitychange', aoVoltar)
+      window.removeEventListener('online', buscar)
+    }
+  }, [uid, buscar])
+
+  const podeEditar = useCallback(() => {
+    if (!supabase || !navigator.onLine) {
+      toast(AVISO_OFFLINE)
+      return false
+    }
+    return true
+  }, [])
+
+  const criar = useCallback(
+    async <T extends NomeTabela>(tabela: T, valores: Novo<T>): Promise<Tabelas[T] | null> => {
+      if (!podeEditar()) return null
+      const { data, error } = await supabase!.from(tabela).insert(valores as never).select().single()
+      if (error || !data) {
+        toast(AVISO_ERRO)
+        return null
+      }
+      setLinhas((l) => ({ ...l, [tabela]: ordenar(tabela, [...(l[tabela] as Tabelas[T][]), data as Tabelas[T]]) }))
+      return data as Tabelas[T]
+    },
+    [podeEditar]
+  )
+
+  const atualizar = useCallback(
+    async <T extends NomeTabela>(tabela: T, id: string, valores: Partial<Tabelas[T]>) => {
+      if (!podeEditar()) return false
+      const antes = linhasRef.current[tabela]
+      setLinhas((l) => ({
+        ...l,
+        [tabela]: ordenar(tabela, l[tabela].map((x) => (x.id === id ? { ...x, ...valores } : x)) as Tabelas[T][]),
+      }))
+      const { error } = await supabase!.from(tabela).update(valores as never).eq('id', id)
+      if (error) {
+        setLinhas((l) => ({ ...l, [tabela]: antes }))
+        toast(AVISO_ERRO)
+        return false
+      }
+      return true
+    },
+    [podeEditar]
+  )
+
+  const remover = useCallback(
+    async (tabela: NomeTabela, id: string) => {
+      if (!podeEditar()) return false
+      const antes = linhasRef.current[tabela]
+      setLinhas((l) => ({ ...l, [tabela]: l[tabela].filter((x) => x.id !== id) }))
+      const { error } = await supabase!.from(tabela).delete().eq('id', id)
+      if (error) {
+        setLinhas((l) => ({ ...l, [tabela]: antes }))
+        toast(AVISO_ERRO)
+        return false
+      }
+      return true
+    },
+    [podeEditar]
+  )
 
   return useMemo(
     () => ({
-      ...estado,
-      alternarTarefa: (id: string) =>
-        setEstado((e) => ({ ...e, tarefas: e.tarefas.map((t) => (t.id === id ? { ...t, feita: !t.feita } : t)) })),
-      adicionarTarefa: (titulo: string, data = iso(hoje())) =>
-        setEstado((e) => ({ ...e, tarefas: [...e.tarefas, { id: novoId(), titulo, feita: false, data } satisfies Tarefa] })),
-      adicionarLembrete: (titulo: string, quando: string) =>
-        setEstado((e) => ({ ...e, lembretes: [...e.lembretes, { id: novoId(), titulo, quando, feito: false } satisfies Lembrete] })),
-      adicionarNota: (texto: string, tipo: Nota['tipo'] = 'ideia') =>
-        setEstado((e) => ({ ...e, notas: [{ id: novoId(), texto, tipo, criadaEm: iso(hoje()) }, ...e.notas] })),
+      eventos: linhas.events,
+      tarefas: linhas.tasks,
+      lembretes: linhas.reminders,
+      notas: linhas.notes,
+      prazos: linhas.exams,
+      materias: linhas.subjects,
+      arquivos: linhas.links,
+      carregando,
+      online,
+      criar,
+      atualizar,
+      remover,
+      recarregar: buscar,
     }),
-    [estado]
+    [linhas, carregando, online, criar, atualizar, remover, buscar]
   )
 }
 

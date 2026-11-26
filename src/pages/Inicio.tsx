@@ -14,8 +14,8 @@ import { Topo } from '@/components/layout/Topo'
 import { useAcoesRapidas } from '@/components/layout/AcoesRapidas'
 import { useDados } from '@/data/dados'
 import { useComputador } from '@/hooks/use-media-query'
-import { agendaDoDia } from '@/data/exemplo'
-import { DIAS_CURTOS, dataPorExtenso, deIso, faltam, hoje, iso, saudacao } from '@/lib/datas'
+import { agendaDoDia } from '@/data/agenda'
+import { DIAS_CURTOS, dataPorExtenso, deIso, faltam, hoje, iso, saudacao, segundaDaSemana, somarDias } from '@/lib/datas'
 
 export default function Inicio() {
   const dados = useDados()
@@ -24,15 +24,23 @@ export default function Inicio() {
   const [dia, setDia] = useState(hojeIso)
   const computador = useComputador()
 
-  const agenda = agendaDoDia(deIso(dia))
   const d = deIso(dia)
+  const agenda = agendaDoDia(dados.eventos, dia, d.getDay())
   const tituloAgenda = dia === hojeIso ? 'Agenda de hoje' : `Agenda de ${DIAS_CURTOS[d.getDay()]}, ${d.getDate()}`
 
   const principais = dados.tarefas.filter((t) => t.data === hojeIso)
-  const feitas = principais.filter((t) => t.feita).length
-  const lembretes = dados.lembretes.filter((l) => !l.feito).sort((a, b) => a.quando.localeCompare(b.quando))
+  const feitas = principais.filter((t) => t.concluida).length
+  const lembretes = dados.lembretes.filter((l) => !l.feito)
   const ideias = dados.notas.filter((n) => n.tipo === 'ideia').length
-  const prazos = [...dados.prazos].sort((a, b) => a.data.localeCompare(b.data))
+  const prazos = dados.prazos.filter((p) => p.data >= hojeIso).slice(0, 3)
+  const inicioSemana = iso(segundaDaSemana(hoje()))
+  const fimSemana = iso(somarDias(segundaDaSemana(hoje()), 6))
+  const daSemana = dados.tarefas.filter((t) => t.data && t.data >= inicioSemana && t.data <= fimSemana)
+  const semana = { concluidas: daSemana.filter((t) => t.concluida).length, total: daSemana.length }
+  const alternarTarefa = (id: string) => {
+    const t = dados.tarefas.find((x) => x.id === id)
+    if (t) dados.atualizar('tasks', id, { concluida: !t.concluida })
+  }
 
   const cardAgenda = (
     <section aria-labelledby="t-agenda" className="min-w-0">
@@ -42,7 +50,19 @@ export default function Inicio() {
           {agenda.length} compromisso{agenda.length === 1 ? '' : 's'}
         </span>
       </div>
-      <AgendaDia itens={agenda} />
+      <AgendaDia
+        itens={agenda}
+        aoAbrir={(c) => abrir({ tipo: 'compromisso', item: c.evento })}
+        vazio={
+          <div className="flex flex-col items-start gap-2 py-1">
+            <p className="text-sm text-muted-foreground">Nada marcado nesse dia.</p>
+            <Button variant="outline" size="sm" onClick={() => abrir({ tipo: 'compromisso', repete: true })}>
+              <Plus strokeWidth={1.75} aria-hidden />
+              Adicionar compromisso
+            </Button>
+          </div>
+        }
+      />
     </section>
   )
 
@@ -57,11 +77,18 @@ export default function Inicio() {
       <Progress value={principais.length ? (feitas / principais.length) * 100 : 0} className="mt-3 mb-2" aria-label="Progresso de hoje" />
       {principais.length ? (
         <Checklist
-          itens={principais.map((t) => ({ id: t.id, titulo: t.titulo, feito: t.feita }))}
-          aoAlternar={dados.alternarTarefa}
+          itens={principais.map((t) => ({ id: t.id, titulo: t.titulo, feito: t.concluida }))}
+          aoAlternar={alternarTarefa}
+          aoEditar={(id) => abrir({ tipo: 'tarefa', item: dados.tarefas.find((t) => t.id === id) })}
         />
       ) : (
-        <p className="py-3 text-sm text-muted-foreground">Nenhuma tarefa para hoje. Use o + para adicionar.</p>
+        <div className="flex flex-col items-start gap-2 py-2">
+          <p className="text-sm text-muted-foreground">Nenhuma tarefa para hoje.</p>
+          <Button variant="outline" size="sm" onClick={() => abrir('tarefa')}>
+            <Plus strokeWidth={1.75} aria-hidden />
+            Adicionar tarefa
+          </Button>
+        </div>
       )}
     </section>
   )
@@ -89,22 +116,40 @@ export default function Inicio() {
   const listaLembretes = lembretes.length ? (
     <div className="grid gap-2 md:grid-cols-2">
       {lembretes.map((l) => (
-        <ItemLembrete key={l.id} titulo={l.titulo} quando={l.quando} />
+        <ItemLembrete key={l.id} titulo={l.titulo} quando={l.quando} aoAbrir={() => abrir({ tipo: 'lembrete', item: l })} />
       ))}
     </div>
   ) : (
     <p className="text-sm text-muted-foreground">Nenhum lembrete por enquanto.</p>
   )
 
-  const cardsPrazos = prazos.map((p) => (
-    <Card key={p.id} className="flex items-center gap-4 p-4 md:px-5">
-      <SeloData data={p.data} />
-      <div className="min-w-0">
-        <p className="text-sm font-medium leading-snug">{p.titulo}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground">{faltam(p.data)}</p>
-      </div>
-    </Card>
-  ))
+  const cardsPrazos = prazos.length
+    ? prazos.map((p) => (
+        <Card key={p.id} className="overflow-hidden">
+          <button
+            type="button"
+            onClick={() => abrir({ tipo: 'prazo', item: p })}
+            className="flex h-full w-full items-center gap-4 p-4 text-left hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/40 focus-visible:outline-none md:px-5"
+          >
+            <SeloData data={p.data} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium leading-snug">{p.titulo}</span>
+              <span className="mt-0.5 block text-xs text-muted-foreground">{faltam(p.data)}</span>
+            </span>
+          </button>
+        </Card>
+      ))
+    : [
+        <button
+          key="vazio"
+          type="button"
+          onClick={() => abrir('prazo')}
+          className="flex min-h-20 items-center gap-3 rounded-2xl border border-dashed px-5 text-left text-sm text-muted-foreground hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none"
+        >
+          <Plus className="size-4 shrink-0" strokeWidth={1.75} aria-hidden />
+          Nenhuma prova ou entrega por vir. Adicionar uma
+        </button>,
+      ]
 
   return (
     <>
@@ -165,11 +210,11 @@ export default function Inicio() {
           {cardPrincipais}
         </Card>
 
-        {cardsPrazos}
-        <Card className="flex flex-col justify-center border-transparent bg-lilac p-5">
+        {cardsPrazos.slice(0, 2)}
+        <Card className="col-start-3 row-start-3 flex flex-col justify-center border-transparent bg-lilac p-5">
           <CardDescription className="font-medium text-accent-foreground">Semana</CardDescription>
           <p className="mt-1 text-sm">
-            {dados.semana.concluidas} de {dados.semana.total} tarefas concluídas
+            {semana.total ? `${semana.concluidas} de ${semana.total} tarefas concluídas` : 'Nenhuma tarefa marcada para esta semana'}
           </p>
         </Card>
       </div>

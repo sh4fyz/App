@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { useNavigate } from 'react-router'
 import { CheckSquare, Folder, GraduationCap, Lightbulb, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { arquivos, materias } from '@/data/exemplo'
+import { useAcoesRapidas } from './AcoesRapidas'
 import { useDados } from '@/data/dados'
 import { cn } from '@/lib/utils'
 
@@ -21,7 +21,8 @@ export function BarraPesquisa({ className }: { className?: string }) {
   const ref = useRef<HTMLInputElement>(null)
   const idLista = useId()
   const navegar = useNavigate()
-  const { tarefas, adicionarNota } = useDados()
+  const { tarefas, materias, arquivos, criar } = useDados()
+  const abrirAcao = useAcoesRapidas()
 
   // Ctrl K / ⌘K foca a busca
   useEffect(() => {
@@ -41,10 +42,10 @@ export function BarraPesquisa({ className }: { className?: string }) {
     const bate = (s: string) => normalizar(s).includes(q)
     return [
       ...materias.filter((m) => bate(m.nome)).map((m) => ({ id: m.id, titulo: m.nome, grupo: 'Matéria', icone: GraduationCap, abrir: () => navegar('/estudos') })),
-      ...tarefas.filter((t) => bate(t.titulo)).map((t) => ({ id: t.id, titulo: t.titulo, grupo: 'Tarefa', icone: CheckSquare, abrir: () => navegar('/') })),
+      ...tarefas.filter((t) => bate(t.titulo)).map((t) => ({ id: t.id, titulo: t.titulo, grupo: 'Tarefa', icone: CheckSquare, abrir: () => abrirAcao({ tipo: 'tarefa', item: t }) })),
       ...arquivos.filter((a) => bate(a.nome)).map((a) => ({ id: a.id, titulo: a.nome, grupo: 'Arquivo', icone: Folder, abrir: () => window.open(a.url, '_blank', 'noopener') })),
     ].slice(0, 7)
-  }, [texto, tarefas, navegar])
+  }, [texto, tarefas, materias, arquivos, navegar, abrirAcao])
 
   function limpar() {
     setTexto('')
@@ -71,9 +72,11 @@ export function BarraPesquisa({ className }: { className?: string }) {
       }
       const t = texto.trim()
       if (!t) return
-      adicionarNota(t, 'ideia')
-      toast('Ideia salva', { description: 'Está na caixa de entrada de Ideias.' })
       limpar()
+      criar('notes', { texto: t, tipo: 'ideia', area: 'geral' }).then((nota) => {
+        if (nota) toast('Ideia salva', { description: 'Está na caixa de entrada de Ideias.' })
+        else setTexto(t)
+      })
     }
   }
 
