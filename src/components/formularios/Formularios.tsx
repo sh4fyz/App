@@ -16,17 +16,21 @@ function confirmarExclusao(nome: string) {
 }
 
 // ---------- tarefa ----------
-export function FormTarefa({ item, aoTerminar, aoVoltar }: Base<Tarefa>) {
-  const { criar, atualizar, remover } = useDados()
+export function FormTarefa({ item, aoTerminar, aoVoltar, area: areaInicial, projetoId }: Base<Tarefa> & { area?: string; projetoId?: string }) {
+  const { criar, atualizar, remover, projetos } = useDados()
   const [salvando, setSalvando] = useState(false)
+  const area = item?.area ?? areaInicial ?? 'geral'
+  const doTrabalho = area === 'trabalho'
+  const projetosAbertos = projetos.filter((p) => p.status !== 'concluido' || p.id === item?.project_id)
 
   async function salvar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
-    const valores = { titulo: String(fd.get('titulo')).trim(), data: String(fd.get('data') || '') || null }
+    const valores: Partial<Tarefa> = { titulo: String(fd.get('titulo')).trim(), data: String(fd.get('data') || '') || null }
+    if (doTrabalho && projetosAbertos.length) valores.project_id = String(fd.get('projeto') || '') || null
     if (!valores.titulo) return
     setSalvando(true)
-    const ok = item ? await atualizar('tasks', item.id, valores) : !!(await criar('tasks', { ...valores, area: 'geral', concluida: false }))
+    const ok = item ? await atualizar('tasks', item.id, valores) : !!(await criar('tasks', { ...valores, area, concluida: false }))
     setSalvando(false)
     if (ok) {
       toast(item ? 'Tarefa salva' : 'Tarefa adicionada')
@@ -37,7 +41,21 @@ export function FormTarefa({ item, aoTerminar, aoVoltar }: Base<Tarefa>) {
   return (
     <form onSubmit={salvar} className="flex flex-col gap-4">
       <Campo rotulo="Tarefa">{(id) => <Input id={id} name="titulo" required autoFocus={!item} autoComplete="off" defaultValue={item?.titulo} placeholder="Ex: ler texto de Psicologia Social" />}</Campo>
-      <Campo rotulo="Para quando">{(id) => <Input id={id} name="data" type="date" defaultValue={item ? (item.data ?? '') : iso(hoje())} />}</Campo>
+      {doTrabalho && projetosAbertos.length > 0 && (
+        <Campo rotulo="Projeto (opcional)">
+          {(id) => (
+            <select id={id} name="projeto" defaultValue={item ? (item.project_id ?? '') : (projetoId ?? '')} className={classeSelect}>
+              <option value="">Nenhum</option>
+              {projetosAbertos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          )}
+        </Campo>
+      )}
+      <Campo rotulo={doTrabalho ? 'Para quando (opcional)' : 'Para quando'}>{(id) => <Input id={id} name="data" type="date" defaultValue={item ? (item.data ?? '') : doTrabalho ? '' : iso(hoje())} />}</Campo>
       <p className="-mt-2 text-xs text-muted-foreground">As tarefas de hoje aparecem em "Principais de hoje".</p>
       <Rodape
         salvando={salvando}
@@ -49,7 +67,7 @@ export function FormTarefa({ item, aoTerminar, aoVoltar }: Base<Tarefa>) {
 }
 
 // ---------- lembrete ----------
-export function FormLembrete({ item, aoTerminar, aoVoltar }: Base<Lembrete>) {
+export function FormLembrete({ item, aoTerminar, aoVoltar, area = 'geral' }: Base<Lembrete> & { area?: string }) {
   const { criar, atualizar, remover } = useDados()
   const [salvando, setSalvando] = useState(false)
 
@@ -59,7 +77,7 @@ export function FormLembrete({ item, aoTerminar, aoVoltar }: Base<Lembrete>) {
     const valores = { titulo: String(fd.get('titulo')).trim(), quando: String(fd.get('quando')) }
     if (!valores.titulo || !valores.quando) return
     setSalvando(true)
-    const ok = item ? await atualizar('reminders', item.id, valores) : !!(await criar('reminders', { ...valores, area: 'geral', feito: false }))
+    const ok = item ? await atualizar('reminders', item.id, valores) : !!(await criar('reminders', { ...valores, area, feito: false }))
     setSalvando(false)
     if (ok) {
       toast(item ? 'Lembrete salvo' : 'Lembrete criado')
@@ -95,16 +113,20 @@ export function FormLembrete({ item, aoTerminar, aoVoltar }: Base<Lembrete>) {
 }
 
 // ---------- nota ----------
-export function FormNota({ item, aoTerminar, aoVoltar }: Base<Nota>) {
+export function FormNota({ item, aoTerminar, aoVoltar, area = 'geral' }: Base<Nota> & { area?: string }) {
   const { criar, atualizar, remover } = useDados()
   const [salvando, setSalvando] = useState(false)
+  const [tipo, setTipo] = useState<'nota' | 'reuniao'>(item?.tipo === 'reuniao' ? 'reuniao' : 'nota')
+  const doTrabalho = (item?.area ?? area) === 'trabalho' && item?.tipo !== 'ideia'
 
   async function salvar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const texto = String(new FormData(e.currentTarget).get('texto')).trim()
     if (!texto) return
     setSalvando(true)
-    const ok = item ? await atualizar('notes', item.id, { texto }) : !!(await criar('notes', { texto, tipo: 'nota', area: 'geral' }))
+    const ok = item
+      ? await atualizar('notes', item.id, doTrabalho ? { texto, tipo } : { texto })
+      : !!(await criar('notes', { texto, tipo: doTrabalho ? tipo : 'nota', area }))
     setSalvando(false)
     if (ok) {
       toast(item ? 'Nota salva' : 'Nota criada')
@@ -114,6 +136,17 @@ export function FormNota({ item, aoTerminar, aoVoltar }: Base<Nota>) {
 
   return (
     <form onSubmit={salvar} className="flex flex-col gap-4">
+      {doTrabalho && (
+        <Escolha
+          rotulo="Tipo"
+          opcoes={[
+            { valor: 'nota', titulo: 'Recado ou pendência' },
+            { valor: 'reuniao', titulo: 'Reunião' },
+          ]}
+          valor={tipo}
+          aoMudar={setTipo}
+        />
+      )}
       <Campo rotulo={item?.tipo === 'ideia' ? 'Ideia' : 'Nota'}>
         {(id) => <textarea id={id} name="texto" required autoFocus={!item} defaultValue={item?.texto} className={classeTexto} placeholder="Escreva aqui" />}
       </Campo>
