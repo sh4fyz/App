@@ -2,7 +2,7 @@ import { Pencil } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
 
-export type ItemChecklist = { id: string; titulo: string; feito: boolean }
+export type ItemChecklist = { id: string; titulo: string; feito: boolean; /** horário ou outra informação curta, à esquerda */ detalhe?: string }
 
 type Props = {
   itens: ItemChecklist[]
@@ -20,6 +20,7 @@ export function Checklist({ itens, aoAlternar, aoEditar, className }: Props) {
         <li key={item.id} className="group flex items-center gap-1">
           <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-xl py-1.5">
             <Checkbox checked={item.feito} onCheckedChange={() => aoAlternar(item.id)} />
+            {item.detalhe && <span className="w-10 shrink-0 text-xs tabular-nums text-muted-foreground">{item.detalhe}</span>}
             <span className={cn('text-sm leading-snug', item.feito && 'text-muted-foreground line-through')}>{item.titulo}</span>
           </label>
           {aoEditar && (

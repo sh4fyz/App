@@ -8,6 +8,8 @@ import Inicio from '@/pages/Inicio'
 import Mais from '@/pages/Mais'
 import EmBreve from '@/pages/EmBreve'
 import Configuracoes from '@/pages/Configuracoes'
+import Trabalho from '@/pages/trabalho/Trabalho'
+import Rotina from '@/pages/trabalho/Rotina'
 import Entrar from '@/pages/conta/Entrar'
 import NovaSenha from '@/pages/conta/NovaSenha'
 import SemConfiguracao from '@/pages/conta/SemConfiguracao'
@@ -18,7 +20,8 @@ function Rotas() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={<Inicio />} />
-          <Route path="trabalho" element={<EmBreve id="trabalho" etapa={4} />} />
+          <Route path="trabalho" element={<Trabalho />} />
+          <Route path="trabalho/rotina" element={<Rotina />} />
           <Route path="estudos" element={<EmBreve id="estudos" etapa={4} />} />
           <Route path="financeiro" element={<EmBreve id="financeiro" etapa={4} />} />
           <Route path="estagio" element={<EmBreve id="estagio" etapa={5} />} />

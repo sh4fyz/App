@@ -2,18 +2,22 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { Bell, CalendarClock, CalendarPlus, CheckSquare, Flag, StickyNote, type LucideIcon } from 'lucide-react'
 import { GavetaRapida } from '@/components/comum/GavetaRapida'
 import { FormCompromisso, FormLembrete, FormNota, FormPrazo, FormTarefa } from '@/components/formularios/Formularios'
-import type { Evento, Lembrete, Nota, Prazo, Tarefa } from '@/data/tipos'
+import { FormConferencia, FormItemRotina, FormProjeto, NOME_PLATAFORMA } from '@/components/formularios/Trabalho'
+import type { ConferenciaPagamento, Evento, ItemRotina, Lembrete, Nota, Plataforma, Prazo, Projeto, Tarefa } from '@/data/tipos'
 
 /**
  * Ações rápidas (botão +, "Novo" nos cards e edição de itens).
  * Para um módulo novo, acrescente o tipo aqui, uma opção em `opcoes` e o formulário.
  */
 export type Acao =
-  | { tipo: 'tarefa'; item?: Tarefa }
-  | { tipo: 'lembrete'; item?: Lembrete }
-  | { tipo: 'nota'; item?: Nota }
+  | { tipo: 'tarefa'; item?: Tarefa; area?: string; projetoId?: string }
+  | { tipo: 'lembrete'; item?: Lembrete; area?: string }
+  | { tipo: 'nota'; item?: Nota; area?: string }
   | { tipo: 'compromisso'; item?: Evento; repete?: boolean }
   | { tipo: 'prazo'; item?: Prazo }
+  | { tipo: 'projeto'; item?: Projeto }
+  | { tipo: 'rotina'; item?: ItemRotina }
+  | { tipo: 'conferencia'; item?: ConferenciaPagamento; plataforma: Plataforma; data: string }
 
 type Tipo = Acao['tipo']
 
@@ -32,6 +36,9 @@ const titulos: Record<Tipo, [string, string]> = {
   nota: ['Nova nota', 'Editar nota'],
   compromisso: ['Novo compromisso', 'Editar compromisso'],
   prazo: ['Nova prova ou entrega', 'Editar prazo'],
+  projeto: ['Novo projeto', 'Editar projeto'],
+  rotina: ['Novo item da rotina', 'Editar item da rotina'],
+  conferencia: ['Conferir pagamento', 'Conferir pagamento'],
 }
 
 const Contexto = createContext<(acao?: Acao | Tipo) => void>(() => {})
@@ -70,15 +77,19 @@ export function AcoesRapidasProvider({ children }: { children: ReactNode }) {
       </div>
     )
   } else {
-    titulo = titulos[acao.tipo][acao.item ? 1 : 0]
+    titulo = acao.tipo === 'conferencia' ? `Conferir ${NOME_PLATAFORMA[acao.plataforma]}` : titulos[acao.tipo][acao.item ? 1 : 0]
     const props = { aoTerminar: fechar, aoVoltar: voltar }
     // a chave recria o formulário a cada abertura, com os valores certos
     const chave = `${acao.tipo}-${acao.item?.id ?? 'novo'}-${String(aberta)}`
-    if (acao.tipo === 'tarefa') conteudo = <FormTarefa key={chave} item={acao.item} {...props} />
-    if (acao.tipo === 'lembrete') conteudo = <FormLembrete key={chave} item={acao.item} {...props} />
-    if (acao.tipo === 'nota') conteudo = <FormNota key={chave} item={acao.item} {...props} />
+    if (acao.tipo === 'tarefa') conteudo = <FormTarefa key={chave} item={acao.item} area={acao.area} projetoId={acao.projetoId} {...props} />
+    if (acao.tipo === 'lembrete') conteudo = <FormLembrete key={chave} item={acao.item} area={acao.area} {...props} />
+    if (acao.tipo === 'nota') conteudo = <FormNota key={chave} item={acao.item} area={acao.area} {...props} />
     if (acao.tipo === 'compromisso') conteudo = <FormCompromisso key={chave} item={acao.item} repete={acao.repete} {...props} />
     if (acao.tipo === 'prazo') conteudo = <FormPrazo key={chave} item={acao.item} {...props} />
+    if (acao.tipo === 'projeto') conteudo = <FormProjeto key={chave} item={acao.item} {...props} />
+    if (acao.tipo === 'rotina') conteudo = <FormItemRotina key={chave} item={acao.item} {...props} />
+    if (acao.tipo === 'conferencia')
+      conteudo = <FormConferencia key={`${chave}-${acao.plataforma}-${acao.data}`} item={acao.item} plataforma={acao.plataforma} data={acao.data} {...props} />
   }
 
   return (
