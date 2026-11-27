@@ -8,12 +8,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
-import { ORDEM, TABELAS, type NomeTabela, type Tabelas } from './tipos'
+import { iso, hoje, somarDias } from '@/lib/datas'
+import { JANELA_DIAS, ORDEM, TABELAS, type NomeTabela, type Tabelas } from './tipos'
 
 type Linhas = { [T in NomeTabela]: Tabelas[T][] }
 type Novo<T extends NomeTabela> = Partial<Omit<Tabelas[T], 'id'>>
 
-const vazio = (): Linhas => ({ events: [], tasks: [], reminders: [], notes: [], exams: [], subjects: [], links: [] })
+const vazio = (): Linhas => Object.fromEntries(TABELAS.map((t) => [t, []])) as unknown as Linhas
 const chaveCache = (uid: string) => `minha-agenda:cache:${uid}`
 
 function ordenar<T extends NomeTabela>(tabela: T, linhas: Tabelas[T][]): Tabelas[T][] {
@@ -49,6 +50,8 @@ function useDadosInterno() {
   const online = useOnline()
   const [linhas, setLinhas] = useState<Linhas>(vazio)
   const [carregando, setCarregando] = useState(true)
+  // tabelas que o banco ainda não tem (ex.: falta rodar um arquivo de migração)
+  const [faltando, setFaltando] = useState<NomeTabela[]>([])
   const linhasRef = useRef(linhas)
   linhasRef.current = linhas
 
@@ -78,15 +81,27 @@ function useDadosInterno() {
       return
     }
     const respostas = await Promise.all(
-      TABELAS.map((t) => supabase!.from(t).select('*').order(ORDEM[t].coluna, { ascending: ORDEM[t].asc }))
+      TABELAS.map((t) => {
+        let q = supabase!.from(t).select('*')
+        const janela = JANELA_DIAS[t]
+        if (janela) q = q.gte(janela.coluna, iso(somarDias(hoje(), -janela.dias)))
+        return q.order(ORDEM[t].coluna, { ascending: ORDEM[t].asc })
+      })
     )
-    if (respostas.some((r) => r.error)) {
+    // sem internet de verdade: tudo falha, fica a cópia local
+    if (respostas.every((r) => r.error)) {
       setCarregando(false)
       return
     }
-    const novo = vazio() as Record<NomeTabela, unknown[]>
-    TABELAS.forEach((t, i) => (novo[t] = respostas[i].data ?? []))
-    setLinhas(novo as Linhas)
+    // uma tabela com erro não derruba as outras: ela fica com a cópia local
+    setLinhas((atual) => {
+      const novo = { ...atual } as Record<NomeTabela, unknown[]>
+      TABELAS.forEach((t, i) => {
+        if (!respostas[i].error) novo[t] = respostas[i].data ?? []
+      })
+      return novo as Linhas
+    })
+    setFaltando(TABELAS.filter((_, i) => respostas[i].error))
     setCarregando(false)
   }, [uid])
 
@@ -169,6 +184,11 @@ function useDadosInterno() {
       prazos: linhas.exams,
       materias: linhas.subjects,
       arquivos: linhas.links,
+      projetos: linhas.projects,
+      itensRotina: linhas.routine_items,
+      checksRotina: linhas.routine_checks,
+      conferencias: linhas.payment_checks,
+      faltando,
       carregando,
       online,
       criar,
@@ -176,7 +196,7 @@ function useDadosInterno() {
       remover,
       recarregar: buscar,
     }),
-    [linhas, carregando, online, criar, atualizar, remover, buscar]
+    [linhas, faltando, carregando, online, criar, atualizar, remover, buscar]
   )
 }
 
