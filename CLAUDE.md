@@ -118,3 +118,9 @@ Tabelas, todas com `user_id` e RLS ligada:
 - Componentes reutilizáveis (Card, Checklist, ItemLembrete, SeloData, GavetaRapida).
 - Sempre funcionar bem na largura de celular (390px).
 - Textos da interface em português, informais e curtos.
+
+## 9. Estilo das respostas
+
+- Respostas curtas e diretas, sem repetir o que eu pedi.
+- Não explicar o código linha por linha; só o que mudou e por quê.
+- Ler só os arquivos necessários para a tarefa.
