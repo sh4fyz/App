@@ -17,7 +17,7 @@ Os nomes dos menus do Supabase mudam de vez em quando; se algum estiver diferent
 
 1. Entre em https://supabase.com, clique em **Start your project** e faça login com o GitHub.
 2. Clique em **New project**. Nome: `minha-agenda`. Crie uma senha do banco e guarde num lugar seguro. Região: **South America (São Paulo)**. Clique em **Create new project** e espere uns 2 minutos.
-3. No menu da esquerda, abra **SQL Editor → New query**. Cole todo o conteúdo do arquivo `supabase/migrations/0001_esquema_inicial.sql` e clique em **Run**. Deve aparecer "Success. No rows returned".
+3. No menu da esquerda, abra **SQL Editor → New query**. Cole todo o conteúdo do arquivo `supabase/migrations/0001_esquema_inicial.sql` e clique em **Run**. Deve aparecer "Success. No rows returned". Depois faça o mesmo com `0002_trabalho.sql` (e com os próximos arquivos da pasta, em ordem, quando surgirem).
 4. Abra **Authentication → URL Configuration**:
    - **Site URL**: o endereço da Vercel (ex.: `https://minha-agenda.vercel.app`).
    - **Redirect URLs**: adicione `https://minha-agenda.vercel.app/**` e `http://localhost:5173/**`.
